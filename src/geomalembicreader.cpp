@@ -109,7 +109,15 @@ protected:
 					vray
 				);
 				abcInstance->meshInstance=geom->newInstance(params);
+				BaseInstance *baseInstance = static_cast<BaseInstance*>(abcInstance->meshInstance);
 				VR::registerRenderInstance2(vray, geom, renderID, mtlPlugin, userAttr);
+				// Register an instance index so we can set separate user attributes on this mesh from the top node
+				baseInstance->setInstanceIndex(i);
+				uint32 instanceKey = VR::CryptomatteInterface2::getInstanceKey(renderID, i);
+				StringManager *strMan = vray->getStringManager();
+				VR::VRayUserAttributes userAttrInstance;
+				userAttrInstance.add(strMan->safeGetStringID("subobject"), strMan->getStringID(abcInstance->abcName));
+				VR::registerRenderInstanceForInstancer(*vray, instanceKey, userAttrInstance);
 			}
 		}
 	}
