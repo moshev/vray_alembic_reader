@@ -269,6 +269,16 @@ void GeomAlembicReader::postRenderEnd(VR::VRayRenderer *vray) {
 	plugman=NULL;
 }
 
+int GeomAlembicReader::getNumSubObjects() {
+	return this->meshInstances.count();
+}
+VR::CharString GeomAlembicReader::getSubObjectName(const int &index) {
+	return meshInstances[index]->abcName;
+}
+VR::CharString GeomAlembicReader::getRootObjectName() {
+	return this->fileName;
+}
+
 void GeomAlembicReader::frameBegin(VR::VRayRenderer *vray) {
 	VRayStaticGeomSource::frameBegin(vray);
 	double time=vray->getFrameData().t;

@@ -464,7 +464,7 @@ struct GeomAlembicReader_Params: VR::VRayParameterListDesc {
 /// This plugin is meant to be put in one or more Node plugins. For every such Node plugin,
 /// GeomAlembicReader will create a GeomAlembicReaderInstance class, which does the job of compiling the geometry of the
 /// GeomStaticMesh plugins with the Node transform and the appropriate material.
-struct GeomAlembicReader: VR::VRayStaticGeomSource, VR::VRaySceneModifierInterface {
+struct GeomAlembicReader: VR::VRayStaticGeomSource, VR::VRaySceneModifierInterface, VR::CompositeOfNamedObjectsInterface {
 	/// Constructor.
 	GeomAlembicReader(VR::VRayPluginDesc *desc): VR::VRayStaticGeomSource(desc) {
 		paramList->setParamCache("file", &fileName, true /* resolvePath */);
@@ -482,7 +482,9 @@ struct GeomAlembicReader: VR::VRayStaticGeomSource, VR::VRaySceneModifierInterfa
 
 	/// Return the interfaces that we support.
 	PluginInterface* newInterface(InterfaceID id) VRAY_OVERRIDE {
-		return (id==EXT_SCENE_MODIFIER)? static_cast<VRaySceneModifierInterface*>(this) : VRayStaticGeomSource::newInterface(id);
+		if (id==EXT_SCENE_MODIFIER) return static_cast<VRaySceneModifierInterface*>(this);
+		if (id==EXT_COMPOSITE_OF_NAMED_OBJECTS) return static_cast<CompositeOfNamedObjectsInterface*>(this);
+		return VRayStaticGeomSource::newInterface(id);
 	}
 
 	PluginBase* getPlugin(void) VRAY_OVERRIDE { return this; }
@@ -512,6 +514,10 @@ struct GeomAlembicReader: VR::VRayStaticGeomSource, VR::VRaySceneModifierInterfa
 	void preRenderBegin(VR::VRayRenderer *vray) VRAY_OVERRIDE; // This is where the new material plugins will be created
 	void postRenderEnd(VR::VRayRenderer *vray) VRAY_OVERRIDE; // This is where we destroy our material plugins
 
+	// From CompositeOfNamedObjectsInterface
+	int getNumSubObjects() override;
+	VR::CharString getSubObjectName(const int &index) override;
+	VR::CharString getRootObjectName() override;
 private:
 	friend struct GeomAlembicReaderInstance;
 
