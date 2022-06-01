@@ -354,6 +354,7 @@ struct AlembicMeshSource {
 	VR::VRayPlugin *geomStaticMesh; ///< The GeomStaticMesh plugin.
 	VR::VRayPlugin *displSubdivPlugin; ///< Plugin for subdivision/displacement that wraps the mesh plugin.
 
+	/*
 	AnimatedVectorListParam verticesParam; ///< The parameter for the vertices.
 	AnimatedIntListParam facesParam; ///< The parameter for the faces.
 
@@ -371,6 +372,10 @@ struct AlembicMeshSource {
 	/// for each instance. For now we always set this flag to true, although potentially this
 	/// can be optimized.
 	VR::DefBoolParam dynamicGeometryParam;
+	*/
+	VR::DefStringParam fileNameParam; ///< File name param of geom mesh file
+	VR::DefStringParam objectPathParam; ///< Which object to load from the abc file
+	VR::DefBoolParam useFullNamesParam;
 
 	VR::DefPluginParam displSubdivSourceMeshParam; ///< The parameter with the source mesh plugin for displSubdivPlugin.
 	VR::DefBoolParam preTesselateDisplParam; ///< Parameter that specifies whether to pre-tessellate displacement.
@@ -384,17 +389,12 @@ struct AlembicMeshSource {
 	int nsamples; ///< Number of time samples.
 
 	/// Constructor.
-	AlembicMeshSource(void):
+	AlembicMeshSource(const tchar *file, const tchar *objectPath):
 		geomStaticMesh(nullptr),
 		displSubdivPlugin(nullptr),
-		verticesParam("vertices"),
-		facesParam("faces"),
-		normalsParam("normals"),
-		faceNormalsParam("faceNormals"),
-		velocitiesParam("velocities"),
-		mapChannelsParam("map_channels"),
-		mapChannelNamesParam("map_channels_names"),
-		dynamicGeometryParam("dynamic_geometry", true),
+		fileNameParam("file", file),
+		useFullNamesParam("use_full_names", true),
+		objectPathParam("object_path", objectPath),
 		displSubdivSourceMeshParam("mesh", nullptr),
 		preTesselateDisplParam("static_displacement", true),
 		preTesselateSubdivParam("static_subdiv", true),
@@ -408,13 +408,6 @@ struct AlembicMeshSource {
 
 	void setNumTimeSteps(int numTimeSteps) {
 		nsamples=numTimeSteps;
-		verticesParam.reserveKeyframes(nsamples);
-		facesParam.reserveKeyframes(nsamples);
-		normalsParam.reserveKeyframes(nsamples);
-		faceNormalsParam.reserveKeyframes(nsamples);
-		velocitiesParam.reserveKeyframes(nsamples);
-		mapChannelsParam.reserveKeyframes(nsamples);
-		mapChannelNamesParam.reserveKeyframes(nsamples);
 	}
 
 	/// Return the plugin that generates geometry for this object. This is either

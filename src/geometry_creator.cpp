@@ -27,6 +27,7 @@ struct MeshVoxelGuardRAII {
 	}
 };
 
+#if 0
 AlembicMeshSource* GeomAlembicReader::createGeomStaticMesh(
 	VRayRenderer *vray,
 	MeshFile &abcFile,
@@ -65,7 +66,7 @@ AlembicMeshSource* GeomAlembicReader::createGeomStaticMesh(
 		vutils_sprintf_n(meshPluginName, COUNT_OF(meshPluginName), "voxel_%i", meshSources.count());
 	}
 
-	VRayPlugin *meshPlugin=newPlugin("GeomStaticMesh", meshPluginName);
+	VRayPlugin *meshPlugin=newPlugin("GeomMeshFile", meshPluginName);
 	if (!meshPlugin)
 		return nullptr;
 
@@ -301,3 +302,127 @@ AlembicMeshSource* GeomAlembicReader::createGeomStaticMesh(
 
 	return abcMeshSource;
 }
+#endif
+
+AlembicMeshSource* GeomAlembicReader::createGeomStaticMesh(
+	VRayRenderer *vray,
+	MeshFile &abcFile,
+	int voxelIndex,
+	int createInstance,
+	DefaultMeshSetsData &meshSets,
+	int nsamples,
+	double frameStart,
+	double frameEnd,
+	double frameTime
+) {
+	MeshVoxel *voxel=abcFile.getVoxel(voxelIndex, nsamples<<16, NULL, NULL);
+	if (!voxel) {
+		vray->getSequenceData().progress->error("Could not load voxel %i of file %s", voxelIndex, fileName.ptr());
+		return NULL;
+	}
+
+	MeshVoxelGuardRAII voxelRAII(abcFile, voxel);
+
+	// First figure out the name of the Alembic object from the face IDs in the voxel.
+	// For Alembic files, all faces have the same face ID and we can use it to read the
+	// name of the shader set, which is the name of the Alembic object.
+	int mtlID=0;
+	const MeshChannel *faceInfoChannel=voxel->getChannel(FACE_INFO_CHANNEL);
+	if (faceInfoChannel) {
+		const FaceInfoData *faceInfo=static_cast<FaceInfoData*>(faceInfoChannel->data);
+		if (faceInfo)
+			mtlID=faceInfo[0].mtlID;
+	}
+
+	// The Alembic name is stored as the shader set name.
+	tchar meshPluginName[512]="";
+	StringID strID=abcFile.getShaderSetStringID(voxel, mtlID);
+	if (strID.id!=0) {
+		strID=vray->getStringManager()->getStringID(strID.id);
+		vutils_sprintf_n(meshPluginName, COUNT_OF(meshPluginName), "voxel_%s", strID.str.ptr());
+	} else {
+		vutils_sprintf_n(meshPluginName, COUNT_OF(meshPluginName), "voxel_%i", meshSources.count());
+	}
+
+	VRayPlugin *meshPlugin=newPlugin("GeomMeshFile", meshPluginName);
+	if (!meshPlugin) {
+		vray->getSequenceData().progress->error("Failed to create GeomMeshFile");
+		return nullptr;
+	}
+
+	TransformsList vertexTransforms;
+	vertexTransforms.setCount(nsamples);
+
+	TimesList times;
+	times.setCount(nsamples);
+
+	AlembicMeshSource *abcMeshSource=new AlembicMeshSource(fileName.ptr(), strID.str.ptr());
+	abcMeshSource->geomStaticMesh=meshPlugin;
+
+	meshPlugin->setParameter(&abcMeshSource->fileNameParam);
+	meshPlugin->setParameter(&abcMeshSource->objectPathParam);
+	meshPlugin->setParameter(&abcMeshSource->useFullNamesParam);
+
+	abcMeshSource->setNumTimeSteps(nsamples);
+
+	// Check if the object should have displacement/subdivision
+	DisplacementSubdivParams displSubdivParams;
+	getDisplacementSubdivParams(strID.str, displSubdivParams);
+
+	VRayPlugin *displSubdivPlugin=nullptr;
+
+	// Create displacement/subvision plugin as needed and set specific parameters.
+	if (displSubdivParams.hasSubdivision) {
+		// Subdivision
+		vutils_strcat_n(meshPluginName, "@subdiv", COUNT_OF(meshPluginName));
+		displSubdivPlugin=newPlugin("GeomStaticSmoothedMesh", meshPluginName);
+		if (displSubdivPlugin) {
+			displSubdivPlugin->setParameter(&abcMeshSource->preTesselateSubdivParam);
+		}
+	} else if (displSubdivParams.displacementTex) {
+		// Only displacement
+		vutils_strcat_n(meshPluginName, "@displ", COUNT_OF(meshPluginName));
+		displSubdivPlugin=newPlugin("GeomDisplacedMesh", meshPluginName);
+		if (displSubdivPlugin) {
+			displSubdivPlugin->setParameter(&abcMeshSource->preTesselateDisplParam);
+		}
+	}
+
+	// Set the general displacement/subdivision parameters as needed.
+	if (displSubdivPlugin) {
+		// Set the source mesh plugin.
+		abcMeshSource->displSubdivSourceMeshParam.setUserObject(meshPlugin, 0 /* index */, 0.0f /* time */);
+		displSubdivPlugin->setParameter(&abcMeshSource->displSubdivSourceMeshParam);
+
+		// Set other parameters.
+		displSubdivPlugin->setParameter(&abcMeshSource->displSubdivEdgeLengthParam);
+		displSubdivPlugin->setParameter(&abcMeshSource->useGlobalsParam);
+		displSubdivPlugin->setParameter(&abcMeshSource->maxSubdivLevelsParam);
+
+		// Set the displacement texture, if any.
+		if (displSubdivParams.displacementTex) {
+			abcMeshSource->displTextureParam.setUserObject(displSubdivParams.displacementTex, 0 /* index */, 0.0f /* time */);
+			displSubdivPlugin->setParameter(&abcMeshSource->displTextureParam);
+
+			abcMeshSource->displAmountParam.setFloat(displSubdivParams.displacementAmount, 0 /* index */, 0.0f /* time */);
+			displSubdivPlugin->setParameter(&abcMeshSource->displAmountParam);
+		}
+	}
+
+	abcMeshSource->displSubdivPlugin=displSubdivPlugin;
+
+	if (createInstance) {
+		AlembicMeshInstance *abcMeshInstance=new AlembicMeshInstance;
+
+		abcMeshInstance->meshIndex=meshInstances.count();
+		abcMeshInstance->meshSource=abcMeshSource;
+		abcMeshInstance->tms.copy(vertexTransforms);
+		abcMeshInstance->times.copy(times);
+		abcMeshInstance->abcName=strID.str;
+
+		meshInstances+=abcMeshInstance;
+	}
+
+	return abcMeshSource;
+}
+

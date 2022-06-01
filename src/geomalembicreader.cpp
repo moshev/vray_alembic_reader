@@ -17,15 +17,13 @@ struct GeomAlembicReaderInstance: VRayStaticGeometry {
 		// Scratchpad arrays for computing transformation matrices
 		TransformsList transforms;
 
-		// Allocate memory for mesh transformations
-		// Transform *tms=(Transform*) alloca(tmCount*sizeof(Transform));
-
 		int numInstances=reader->meshInstances.count();
 		for (int i=0; i<numInstances; i++) {
 			AlembicMeshInstance *abcInstance=reader->meshInstances[i];
 			if (!abcInstance || !abcInstance->meshInstance)
 				continue;
 
+#if 0
 			// Compute the transformations for this mesh
 			double *times=&(abcInstance->times[0]);
 			
@@ -36,6 +34,9 @@ struct GeomAlembicReaderInstance: VRayStaticGeometry {
 			vassert(transforms.count()==abcInstance->times.count());
 
 			abcInstance->meshInstance->compileGeometry(vray, &transforms[0], times, transforms.count());
+#else
+			abcInstance->meshInstance->compileGeometry(vray, _tm, _times, _tmCount);
+#endif
 		}
 	}
 
@@ -109,8 +110,9 @@ protected:
 					vray
 				);
 				abcInstance->meshInstance=geom->newInstance(params);
-				BaseInstance *baseInstance = static_cast<BaseInstance*>(abcInstance->meshInstance);
 				VR::registerRenderInstance2(vray, geom, renderID, mtlPlugin, userAttr);
+				/*
+				BaseInstance *baseInstance = static_cast<BaseInstance*>(abcInstance->meshInstance);
 				// Register an instance index so we can set separate user attributes on this mesh from the top node
 				baseInstance->setInstanceIndex(i);
 				uint32 instanceKey = VR::CryptomatteInterface2::getInstanceKey(renderID, i);
@@ -118,6 +120,9 @@ protected:
 				VR::VRayUserAttributes userAttrInstance;
 				userAttrInstance.add(strMan->safeGetStringID("subobject"), strMan->getStringID(abcInstance->abcName));
 				VR::registerRenderInstanceForInstancer(*vray, instanceKey, userAttrInstance);
+				*/
+			} else {
+				vray->getSequenceData().progress->error("Geom plugin does not implement StaticGeomSourceInterface!");
 			}
 		}
 	}
@@ -409,6 +414,8 @@ void GeomAlembicReader::loadGeometry(int frameNumber, VRayRenderer *vray) {
 			);
 			if (abcMeshSource) {
 				meshSources+=abcMeshSource;
+				abcMeshSource->geomStaticMesh->renderBegin(vray);
+				abcMeshSource->geomStaticMesh->frameBegin(vray);
 			}
 		}
 	}
@@ -436,6 +443,8 @@ void GeomAlembicReader::unloadGeometry(VRayRenderer *vray) {
 		}
 
 		if (abcMeshSource->geomStaticMesh) {
+			abcMeshSource->geomStaticMesh->frameEnd(vray);
+			abcMeshSource->geomStaticMesh->renderEnd(vray);
 			deletePlugin(abcMeshSource->geomStaticMesh);
 			abcMeshSource->geomStaticMesh=nullptr;
 		}
